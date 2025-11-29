@@ -2982,21 +2982,32 @@ class CompetingPhasesAnalyzer(MSONable):
         # TODO: At present, this does not work for codoping I believe?
         # for each intrinsic chemical potential limit, find the most stable extrinsic competing phase
         # (equivalent to most negative μ_extrinsic_elt):
+       
         for extrinsic_elt in extrinsic_elements:
             for limit, chempot_series in chempots_df.iterrows():
                 chempots_df.loc[limit, extrinsic_elt.symbol] = np.inf
                 chempots_df.loc[limit, f"{extrinsic_elt.symbol}-Limiting Phase"] = "N/A"
                 for entry in self.extrinsic_entries:
                     formation_energy = self.phase_diagram.get_form_energy(entry)
-                    mu_extrinsic = (
-                        formation_energy
-                        - sum(
+                    
+                    mui_ni = sum(
                             [
                                 chempot_series[elt.symbol] * entry.composition[elt]
                                 for elt in self.composition.elements
-                            ]
-                        )
-                    ) / entry.composition[extrinsic_elt]
+                            ])
+                    
+                    mu_extrinsic = np.divide((formation_energy - mui_ni), entry.composition[extrinsic_elt])
+                    # mu_extrinsic = (formation_energy - mui_ni) / entry.composition[extrinsic_elt]
+                    # print("MU_EXTRINSIC", mu_extrinsic)
+                    # mu_extrinsic = (
+                    #     formation_energy
+                    #     - sum(
+                    #         [
+                    #             chempot_series[elt.symbol] * entry.composition[elt]
+                    #             for elt in self.composition.elements
+                    #         ]
+                    #     )
+                    # ) / entry.composition[extrinsic_elt]
                     if mu_extrinsic < chempots_df.loc[limit, extrinsic_elt.symbol] and (
                         mu_extrinsic not in [-np.inf, np.inf, np.nan]
                     ):  # lower energy entry & μ_extrinsic_elt, and finite

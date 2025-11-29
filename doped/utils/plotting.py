@@ -1269,7 +1269,7 @@ def plot_chemical_potential_table(
         The ``matplotlib.table.Table`` object (which has been added to the
         ``ax`` object).
     """
-    if el_refs is not None:
+    if el_refs is not None:        
         dft_chempots = {el: energy - el_refs[el] for el, energy in dft_chempots.items()}
     labels = [rf"$\mathregular{{\mu_{{{s}}}}}$," for s in sorted(dft_chempots.keys())]
     labels[0] = f"({labels[0]}"

@@ -404,7 +404,6 @@ class DefectEntry(thermo.DefectEntry):
                 "No dielectric constant provided, either as a function argument or in "
                 "defect_entry.calculation_metadata."
             )
-
         fnv_correction_output = get_freysoldt_correction(
             defect_entry=self,
             dielectric=dielectric,
@@ -416,6 +415,7 @@ class DefectEntry(thermo.DefectEntry):
             style_file=style_file,
             **kwargs,
         )
+
         correction = fnv_correction_output if not plot and filename is None else fnv_correction_output[0]
         self.corrections.update({"freysoldt_charge_correction": correction.correction_energy})
         self._check_if_multiple_finite_size_corrections()
@@ -561,6 +561,7 @@ class DefectEntry(thermo.DefectEntry):
                 "defect_entry.calculation_metadata."
             )
 
+        print("\tGET KC1")
         efnv_correction_output = get_kumagai_correction(
             defect_entry=self,
             dielectric=dielectric,
@@ -573,6 +574,7 @@ class DefectEntry(thermo.DefectEntry):
             style_file=style_file,
             **kwargs,
         )
+        print("\tGET KC2")
         correction = efnv_correction_output if not plot and filename is None else efnv_correction_output[0]
         self.corrections.update({"kumagai_charge_correction": correction.correction_energy})
         self._check_if_multiple_finite_size_corrections()
