@@ -2584,14 +2584,11 @@ class DefectParserVasp:
         # regardless, try parsing OUTCAR files first (quickest, more robust for cases where defect
         # charge is localised somewhat off the (auto-determined) defect site (e.g. split-interstitials
         # etc) and also works regardless of isotropic/anisotropic)
-        print("LOADING CORRECTIONS VASP")
         if _check_folder_for_file_match(defect_path, "OUTCAR") and _check_folder_for_file_match(
             bulk_path, "OUTCAR"
         ):
             try:
-                print("LOAD EFNV VASP1")
                 self.load_eFNV_data()
-                print("LOAD EFNV VASP2")
             except Exception as kumagai_exc:
                 if _check_folder_for_file_match(defect_path, "LOCPOT") and _check_folder_for_file_match(
                     bulk_path, "LOCPOT"
@@ -2641,8 +2638,6 @@ class DefectParserVasp:
         elif _check_folder_for_file_match(defect_path, "LOCPOT") and _check_folder_for_file_match(
             bulk_path, "LOCPOT"
         ):
-            print("LOADING CORRECTIONS VASP FNV")
-
             try:
                 if not isotropic_dielectric:
                     # convert anisotropic dielectric to harmonic mean of the diagonal:
@@ -3100,7 +3095,7 @@ class DefectParserEspresso:
         skip_corrections: bool = False,
         error_tolerance: float = 0.05,
         parse_projected_eigen: bool | None = None,
-        default_filename: str = "espresso.xml",
+        filename: str = "espresso.xml",
         **kwargs,
     ):
         """
@@ -3170,7 +3165,7 @@ class DefectParserEspresso:
         self.error_tolerance = error_tolerance
         self.kwargs = kwargs or {}
         self.parse_projected_eigen = parse_projected_eigen
-        self.default_filename = default_filename
+        self.filename = filename
 
     @classmethod
     def from_paths(
@@ -3185,7 +3180,7 @@ class DefectParserEspresso:
         error_tolerance: float = 0.05,
         bulk_band_gap_vr: PathLike | Vasprun | None = None,
         parse_projected_eigen: bool | None = None,
-        default_filename = 'espresso.xml',
+        filename = 'espresso.xml',
         occu_tol: float = 1e-8,
         pp_folder: PathLike = None,
         **kwargs,
@@ -3302,9 +3297,9 @@ class DefectParserEspresso:
             ``DefectParser`` object.
         """
 
-        def _get_bulk_supercell(bulk_path, bulk_vr, default_filename, parse_projected_eigen, bulk_procar):
+        def _get_bulk_supercell(bulk_path, bulk_vr, filename, parse_projected_eigen, bulk_procar):
             if bulk_path is not None and bulk_vr is None:
-                bulk_vr_path, multiple = _get_output_files_warn_if_multiple(default_filename, bulk_path, dir_type="bulk")
+                bulk_vr_path, multiple = _get_output_files_warn_if_multiple(filename, bulk_path, dir_type="bulk")
 
                 bulk_vr, reparsed_bulk_procar = RunParser('espresso')._parse_run_and_poss_projwfc(
                     bulk_vr_path,
@@ -3325,16 +3320,15 @@ class DefectParserEspresso:
             bulk_supercell = bulk_vr.final_structure.copy()
             return bulk_vr, bulk_supercell
 
-        def _get_defect_vr_procar(default_filename, defect_path, parse_projected_eigen):
-            defect_vr_path, multiple = _get_output_files_warn_if_multiple(default_filename, defect_path, dir_type="defect")
+        def _get_defect_vr_procar(filename, defect_path, parse_projected_eigen):
+            defect_vr_path, multiple = _get_output_files_warn_if_multiple(filename, defect_path, dir_type="defect")
 
             defect_vr, defect_procar = RunParser('espresso')._parse_run_and_poss_projwfc(
                 defect_vr_path, parse_projected_eigen, defect_path, label="defect"
             )
             defect_vr = RunParser('espresso').ensure_band_edges(defect_vr, occu_tol, backend = 'pymatgen')         ### bandgap for bulk_vr
 
-            parse_projected_eigen = defect_procar is not None or defect_vr.projected_eigenvalues is not None
-            return defect_vr, defect_procar, parse_projected_eigen
+            return defect_vr, defect_procar
 
         def _parse_charge_state(defect_path, defect_vr, pp_folder ):
             """
@@ -3343,7 +3337,6 @@ class DefectParserEspresso:
             possible_defect_name = os.path.basename(
                 defect_path.rstrip("/.").rstrip("/")  # remove any trailing slashes to ensure correct name
             )                                         # set equal to folder name
-
             if "espresso" in possible_defect_name:  # get parent directory name:
                 possible_defect_name = os.path.basename(os.path.dirname(defect_path))
 
@@ -3354,7 +3347,6 @@ class DefectParserEspresso:
 
             except RuntimeError as orig_exc:  # auto charge guessing failed and charge_state not provided,
                 # try to determine from folder name -- must have "-" or "+" at end of name for this
-
                 try:
                     charge_state_suffix = possible_defect_name.rsplit("_", 1)[-1]
                     if charge_state_suffix[0] not in ["-", "+"]:
@@ -3369,9 +3361,7 @@ class DefectParserEspresso:
                             f"Guessed charge state from folder name was {parsed_charge_state:+} which is "
                             f"almost certainly unphysical"
                         )
-
                 except Exception as next_exc:
-                    print("RAISE EXCePTIOn:")
                     raise orig_exc from next_exc
 
             return possible_defect_name, parsed_charge_state
@@ -3384,13 +3374,12 @@ class DefectParserEspresso:
 
         bulk_vr, bulk_supercell = _get_bulk_supercell(bulk_path, 
                                             bulk_vr, 
-                                            default_filename, 
+                                            filename, 
                                             parse_projected_eigen, 
                                             bulk_procar)
+        defect_vr, defect_procar = _get_defect_vr_procar(filename, defect_path, parse_projected_eigen)
 
-        defect_vr, defect_procar, parse_projected_eigen = _get_defect_vr_procar(default_filename, 
-                                                                                defect_path, 
-                                                                                parse_projected_eigen)
+        parse_projected_eigen = defect_procar is not None or defect_vr.projected_eigenvalues is not None
 
         possible_defect_name, parsed_charge_state = _parse_charge_state(defect_path, defect_vr, pp_folder)
 
@@ -3443,11 +3432,11 @@ class DefectParserEspresso:
         )
         calculation_metadata.update(defect_structure_metadata)  # add defect structure metadata
 
-
         # ComputedEntry.parameters keys have random order when using Vasprun.get_computed_entry(), which is
         # fine but shows file differences in git diffs, so sort them to avoid this (just for easier
         # tracking for SK, allow it fam)
         sc_entry = defect_vr.get_computed_entry(entry_id = "")
+
         bulk_entry = bulk_vr.get_computed_entry(entry_id = "")
 
         for computed_entry in [sc_entry, bulk_entry]:
@@ -3615,23 +3604,8 @@ class DefectParserEspresso:
         dp.load_and_check_calculation_metadata()  # Load standard defect metadata
         dp.load_bulk_gap_data(bulk_band_gap_vr=bulk_band_gap_vr)  # Load band gap data
         dp = to_correct_or_not(dp, defect_entry, skip_corrections)
+
         return dp
-
-    @classmethod
-    def _process_dielectric_parameters(cls, dielectric, skip_corrections, calculation_metadata, parsed_charge_state):
-        if dielectric is None and not skip_corrections and parsed_charge_state != 0:
-            warnings.warn(
-                "The dielectric constant (`dielectric`) is needed to compute finite-size charge "
-                "corrections, but none was provided, so charge corrections will be skipped "
-                "(`skip_corrections = True`). Formation energies and transition levels of charged "
-                "defects will likely be very inaccurate without charge corrections!"
-            )
-            skip_corrections = True
-
-        if dielectric is not None:
-            dielectric = _convert_dielectric_to_tensor(dielectric)
-            calculation_metadata["dielectric"] = dielectric
-        return dielectric,skip_corrections
 
     def _check_and_load_appropriate_charge_correction(self, correction = None):
         """
@@ -3683,103 +3657,23 @@ class DefectParserEspresso:
                 self.load_eFNV_data()
             elif correction.lower() == 'fnv': 
                 self.load_FNV_data()
-
-
-                
-
-        # regardless, try parsing OUTCAR files first (quickest, more robust for cases where defect
-        # charge is localised somewhat off the (auto-determined) defect site (e.g. split-interstitials
-        # etc) and also works regardless of isotropic/anisotropic)
-        # if _file_in_folder(defect_path, "OUTCAR") and _file_in_folder(
-        #     bulk_path, "OUTCAR"
-        # ):
-        #     try:
-        #         self.load_eFNV_data()
-        #     except Exception as kumagai_exc:
-        #         if _file_in_folder(defect_path, "LOCPOT") and _file_in_folder(
-        #             bulk_path, "LOCPOT"
-        #         ):
-        #             try:
-        #                 if not isotropic_dielectric:
-        #                     # convert anisotropic dielectric to harmonic mean of the diagonal:
-        #                     # (this is a better approximation than the pymatgen default of the
-        #                     # standard arithmetic mean of the diagonal)
-        #                     self.defect_entry.calculation_metadata["dielectric"] = (
-        #                         _convert_anisotropic_dielectric_to_isotropic_harmonic_mean(dielectric)
-        #                     )
-        #                 self.load_FNV_data()
-        #                 if not isotropic_dielectric:
-        #                     warnings.warn(
-        #                         _aniso_dielectric_but_outcar_problem_warning
-        #                         + "in the defect or bulk folder were unable to be parsed, giving the "
-        #                         "following error message:"
-        #                         + f"\n{kumagai_exc}\n"
-        #                         + _aniso_dielectric_but_using_locpot_warning
-        #                     )
-        #             except Exception as freysoldt_exc:
-        #                 warnings.warn(
-        #                     f"Got this error message when attempting to parse defect & bulk `OUTCAR` "
-        #                     f"files to compute the Kumagai (eFNV) charge correction:"
-        #                     f"\n{kumagai_exc}\n"
-        #                     f"Then got this error message when attempting to parse defect & bulk "
-        #                     f"`LOCPOT` files to compute the Freysoldt (FNV) charge correction:"
-        #                     f"\n{freysoldt_exc}\n"
-        #                     f"-> Charge corrections will not be applied for this defect."
-        #                 )
-        #                 if not isotropic_dielectric:
-        #                     # reset dielectric to original anisotropic value if FNV failed as well:
-        #                     self.defect_entry.calculation_metadata["dielectric"] = dielectric
-        #                 skip_corrections = True
-
-        #         else:
-        #             warnings.warn(
-        #                 f"`OUTCAR` files (needed to compute the Kumagai eFNV charge correction for "
-        #                 f"_anisotropic_ and isotropic systems) in the defect or bulk folder were unable "
-        #                 f"to be parsed, giving the following error message:"
-        #                 f"\n{kumagai_exc}\n"
-        #                 f"-> Charge corrections will not be applied for this defect."
-        #             )
-        #             skip_corrections = True
-
-        # elif _file_in_folder(defect_path, "LOCPOT") and _file_in_folder(
-        #     bulk_path, "LOCPOT"
-        # ):
-        #     try:
-        #         if not isotropic_dielectric:
-        #             # convert anisotropic dielectric to harmonic mean of the diagonal:
-        #             # (this is a better approximation than the pymatgen default of the
-        #             # standard arithmetic mean of the diagonal)
-        #             self.defect_entry.calculation_metadata["dielectric"] = (
-        #                 _convert_anisotropic_dielectric_to_isotropic_harmonic_mean(dielectric)
-        #             )
-        #         self.load_FNV_data()
-        #         if not isotropic_dielectric:
-        #             warnings.warn(
-        #                 _aniso_dielectric_but_outcar_problem_warning
-        #                 + "are missing from the defect or bulk folder.\n"
-        #                 + _aniso_dielectric_but_using_locpot_warning
-        #             )
-        #     except Exception as freysoldt_exc:
-        #         warnings.warn(
-        #             f"Got this error message when attempting to parse defect & bulk `LOCPOT` files to "
-        #             f"compute the Freysoldt (FNV) charge correction:"
-        #             f"\n{freysoldt_exc}\n"
-        #             f"-> Charge corrections will not be applied for this defect."
-        #         )
-        #         if not isotropic_dielectric:
-        #             # reset dielectric to original anisotropic value if FNV failed as well:
-        #             self.defect_entry.calculation_metadata["dielectric"] = dielectric
-        #         skip_corrections = True
-
-        # else:
-        #     if int(self.defect_entry.charge_state) != 0:
-        #         warnings.warn(
-        #             "`LOCPOT` or `OUTCAR` files are missing from the defect or bulk folder. "
-        #             "These are needed to perform the finite-size charge corrections. "
-        #             "Charge corrections will not be applied for this defect."
-        #         )
-        #         skip_corrections = True
         return skip_corrections
+
+    @classmethod
+    def _process_dielectric_parameters(cls, dielectric, skip_corrections, calculation_metadata, parsed_charge_state):
+        if dielectric is None and not skip_corrections and parsed_charge_state != 0:
+            warnings.warn(
+                "The dielectric constant (`dielectric`) is needed to compute finite-size charge "
+                "corrections, but none was provided, so charge corrections will be skipped "
+                "(`skip_corrections = True`). Formation energies and transition levels of charged "
+                "defects will likely be very inaccurate without charge corrections!"
+            )
+            skip_corrections = True
+
+        if dielectric is not None:
+            dielectric = _convert_dielectric_to_tensor(dielectric)
+            calculation_metadata["dielectric"] = dielectric
+        return dielectric,skip_corrections
 
     def load_FNV_data(self, bulk_locpot_dict: dict | None = None):
         """
@@ -3814,9 +3708,9 @@ class DefectParserEspresso:
         bulk_locpot_dict = (
             bulk_locpot_dict
             or self.kwargs.get("bulk_locpot_dict", None)
-            or RunParser(self.code)._get_bulk_locpot_dict(filename = 'cube', 
-                                                          bulk_path = self.defect_entry.calculation_metadata["bulk_path"])
+            or RunParser(self.code)._get_bulk_locpot_dict(self.defect_entry.calculation_metadata["bulk_path"])
         )
+
         defect_locpot_path, multiple = _get_output_files_warn_if_multiple('cube',
                                                                           self.defect_entry.calculation_metadata["defect_path"],
                                                                           dir_type = "defect"
@@ -3866,29 +3760,19 @@ class DefectParserEspresso:
             return None
 
         bulk_site_potentials = bulk_site_potentials or self.kwargs.get("bulk_site_potentials", None)
-
-        
-
         bulk_site_potentials_dict = {}
         if bulk_site_potentials is None:
             
             bulk_path = self.defect_entry.calculation_metadata["bulk_path"]
             bulk_cube_path, _ = _get_output_files_warn_if_multiple("cube", bulk_path)
-            print("IFF")
-
             bulk_site_potentials_dict = RunParser(self.code)._get_core_site_potentials(cube_file = bulk_cube_path)
-            print("IFF2")
-
             pass
         else:
-            print("ELSEIFF")
             bulk_site_potentials_dict["site_potentials"] = bulk_site_potentials
 
         defect_path = self.defect_entry.calculation_metadata["defect_path"]
         defect_cube_path, _ = _get_output_files_warn_if_multiple("cube", defect_path)
-        print("STILL HERE")
         defect_site_potentials_dict = RunParser(self.code)._get_core_site_potentials(cube_file = defect_cube_path)
-        print("NOPES")
         
         self.defect_entry.calculation_metadata.update(
             {
@@ -3896,8 +3780,7 @@ class DefectParserEspresso:
                 "defect_site_potentials": defect_site_potentials_dict['site_potentials'],
             }
         )
-        print("\tINSIDE LOAD EFNV DATA6 - MULTIPLY BY -1???", self.defect_entry.name)
-        # bulk_site_potentials = -np.array(bulk_site_potentials)
+        print("TAKING NEGATIVE OF BULK SITE POTENTIALS - VERIFY")
         bulk_site_potentials = np.array(bulk_site_potentials)
         return bulk_site_potentials
 
@@ -3908,20 +3791,7 @@ class DefectParserEspresso:
         compatible.
         """
         if not self.bulk_vr:
-            bulk_vr_path, multiple = _get_output_files_warn_if_multiple(default_filename, self.defect_entry.calculation_metadata["bulk_path"], dir_type="bulk")
-
-
-            # bulk_vr_path, multiple = _get_output_files_and_check_if_multiple(
-            #     "vasprun.xml", self.defect_entry.calculation_metadata["bulk_path"]
-            # )
-            # if multiple:
-            #     _multiple_files_warning(
-            #         "vasprun.xml",
-            #         self.defect_entry.calculation_metadata["bulk_path"],
-            #         bulk_vr_path,
-            #         dir_type="bulk",
-            #     )
-            print("LOAD _ AND _ CHECK")
+            bulk_vr_path, multiple = _get_output_files_warn_if_multiple(filename, self.defect_entry.calculation_metadata["bulk_path"], dir_type="bulk")
             self.bulk_vr = _parse_vr_and_poss_projwfc(
                 bulk_vr_path,
                 parse_projected_eigen=False,  # not needed for DefectEntry metadata
@@ -3930,19 +3800,7 @@ class DefectParserEspresso:
             )
 
         if not self.defect_vr:
-            defect_vr_path, multiple = _get_output_files_warn_if_multiple(default_filename, self.defect_entry.calculation_metadata["defect_path"], dir_type="defect")
-
-
-            # defect_vr_path, multiple = _get_output_files_and_check_if_multiple(
-            #     "vasprun.xml", self.defect_entry.calculation_metadata["defect_path"]
-            # )
-            # if multiple:
-            #     _multiple_files_warning(
-            #         "vasprun.xml",
-            #         self.defect_entry.calculation_metadata["defect_path"],
-            #         defect_vr_path,
-            #         dir_type="defect",
-            #     )
+            defect_vr_path, multiple = _get_output_files_warn_if_multiple(filename, self.defect_entry.calculation_metadata["defect_path"], dir_type="defect")
             self.defect_vr = _parse_vr_and_poss_procar(
                 defect_vr_path,
                 parse_projected_eigen=False,  # not needed for DefectEntry metadata
@@ -4087,7 +3945,7 @@ class DefectParserEspresso:
         """
         if not self.bulk_vr:
             bulk_vr_path, multiple = _get_output_files_and_check_if_multiple(
-                self.default_filename, self.defect_entry.calculation_metadata["bulk_path"]
+                self.filename, self.defect_entry.calculation_metadata["bulk_path"]
             )
             if multiple:
                 warnings.warn(
@@ -4213,9 +4071,7 @@ class DefectParserEspresso:
         elif self.defect_entry.calculation_metadata.get(
             "bulk_locpot_dict"
         ) and self.defect_entry.calculation_metadata.get("defect_locpot_dict"):
-          
             self.defect_entry.get_freysoldt_correction(verbose=False, error_tolerance=self.error_tolerance)
-
 
         else:
             raise ValueError(
@@ -4865,8 +4721,9 @@ class DefectsParserEspresso(DefectsParserVasp):
         return self.defect_dict
 
     def _parse_defect_folders_and_warnings(self):
-        parsed_defect_entries, parsing_warnings = self.__parse_defect_folders()
-        # parsing_warnings = self.__parse_defect_folders(parsing_warnings)
+        parsed_defect_entries, parsing_warnings = self._parse_defect_folders()
+
+        parsing_warnings = self._process_parsing_warnings(parsing_warnings)
 
         if not parsed_defect_entries:
             subfolder_string = f" and `subfolder`: '{self.subfolder}'" if self.subfolder != "." else ""
@@ -4879,95 +4736,12 @@ class DefectsParserEspresso(DefectsParserVasp):
 
         return parsed_defect_entries, parsing_warnings
  
-    def __parse_defect_folders(self):
-        """
-        Parse defect calculation folders (serially or multily), depending on CPU cores available. 
-        """
-
-        parsed_defect_entries = []
-        parsing_warnings = []
-        mp = get_mp_context()  # safer multiprocessing context
-
-        # Decide number of processes
-        if self.processes is None:
-            self.processes = min(max(1, mp.cpu_count() - 1), len(self.defect_folders) - 1)
-
-        # Serial processing
-        if self.processes <= 1:
-            
-            with tqdm(self.defect_folders, desc="Parsing defect calculations") as pbar:
-                for defect_folder in pbar:
-                    pbar.set_description(f"Parsing {defect_folder}/{self.subfolder}".replace("/.", ""))
-                    print("SERIAL: ", defect_folder)
-                    parsed_defect_entry, warnings_string, _folder = self._parse_defect_and_handle_warnings(defect_folder)
-                    print("SERIAL2: ", parsed_defect_entry)
-
-                    parsing_warnings.append(
-                        self._parse_parsing_warnings(warnings_string, defect_folder, f"{defect_folder}/{self.subfolder}")
-                    )
-                    if parsed_defect_entry is not None:
-                        parsed_defect_entries.append(parsed_defect_entry)
-        # Multiprocessing
-        else:
-            # guess a charged defect in defect_folders, to try initially check if dielectric and
-            # corrections correctly set, before multiprocessing with the same settings for all folders:
-            charged_defect_folder = None
-            for possible_charged_defect_folder in self.defect_folders:
-                with contextlib.suppress(Exception):
-                    if abs(int(possible_charged_defect_folder[-1])) > 0:  # likely charged defect
-                        charged_defect_folder = possible_charged_defect_folder
-
-            pbar = tqdm(total=len(self.defect_folders))
-            try:
-                #----Set up preliminary work on charged_defect_folder----
-                if charged_defect_folder is not None:                    
-                    pbar.set_description(f"Parsing {charged_defect_folder}/{self.subfolder}".replace("/.", ""))
-
-                    parsed_defect_entry, warnings_string, _folder = self._parse_defect_and_handle_warnings(charged_defect_folder) #parse entry
-
-                    parsing_warnings.append(
-                        self._update_pbar_and_return_warnings_from_parsing(parsed_defect_entry, warnings_string, charged_defect_folder, pbar)
-                    )
-                    if parsed_defect_entry is not None:
-                        parsed_defect_entries.append(parsed_defect_entry)
-
-                #----Get bulk potentials for fnv and efnv corrections---
-                for k, v in self.bulk_corrections_data.items():
-                    if v is None:
-                        with contextlib.suppress(Exception):
-                            if k == "bulk_locpot_dict":
-                                self.bulk_corrections_data[k] = RunParser('espresso')._get_bulk_locpot_dict(self.bulk_path, quiet=True)
-                            elif k == "bulk_site_potentials":
-                                bulk_cube_path, _ = _get_output_files_warn_if_multiple("cube", self.bulk_path)
-                                self.bulk_corrections_data[k] = RunParser(self.code)._get_core_site_potentials(cube_file = bulk_cube_path)
-
-                # Parallel processing of remaining folders
-                folders_to_process = [f for f in self.defect_folders if f != charged_defect_folder]
-                pbar.set_description("Setting up multiprocessing")
-
-                # if self.processes > 1:
-                with pool_manager(self.processes) as pool:
-                    results = pool.imap_unordered(self._parse_defect_and_handle_warnings, folders_to_process)
-                    for result in results:
-                        parsing_warnings.append(
-                            self._update_pbar_and_return_warnings_from_parsing(
-                                defect_entry=result[0],
-                                warnings_string=result[1],
-                                defect_folder=result[2],
-                                pbar=pbar,
-                            )
-                        )
-                        if result[0] is not None:
-                            parsed_defect_entries.append(result[0])
-
-            except Exception as exc:
-                pbar.close()
-                raise exc
-
-            finally:
-                pbar.close()
-
-        return parsed_defect_entries, parsing_warnings
+     def _get_bulk_oxi_states(self):
+        self._bulk_oxi_states: Structure | Composition | dict | bool = False
+        if bulk_struct_w_oxi := guess_and_set_oxi_states_with_timeout(
+            self.bulk_vr.final_structure, break_early_if_expensive=True
+        ):
+            self.bulk_vr.final_structure = self._bulk_oxi_states = bulk_struct_w_oxi
 
     def _process_parsing_warnings(self, parsing_warnings):
         # Remove empty warnings
@@ -5065,35 +4839,93 @@ class DefectsParserEspresso(DefectsParserVasp):
                 warnings.warn(f"Defects: {defect_set} each encountered the same warning:\n{w}")
 
         return new_parsing_warnings
-
-    def _parse_bulk_folder(self, bulk_vr_path, occu_tol, backend = 'pymatgen' ):
+            
+    def _parse_defect_folders(self):
         """
-        Parse bulk folder
+        Parse defect calculation folders (serially or multily), depending on CPU cores available. 
         """
-        #==Parse bulk and its oxidations states
-        self.bulk_vr, self.bulk_procar = RunParser('espresso')._parse_run_and_poss_projwfc(
-            bulk_vr_path,
-            parse_projected_eigen=self.parse_projected_eigen,
-            output_path=self.bulk_path,
-            label="bulk",
-            parse_procar=True,
-        )
-        self.bulk_procar = (
-            self.bulk_vr.projected_eigenvalues is not None or self.bulk_procar is not None
-        )
-        self.bulk_vr = RunParser('espresso').ensure_band_edges(self.bulk_vr, occu_tol, backend = backend)         ### bandgap for bulk_vr
 
-            # try parsing the bulk oxidation states first, for later assigning defect "oxi_state"s (i.e.
-            # fully ionised charge states):
-        self._bulk_oxi_states = self.__get_bulk_oxi_states()
-        return self.bulk_vr, self.bulk_procar, self.bulk_procar, self._bulk_oxi_states
+        parsed_defect_entries = []
+        parsing_warnings = []
+        mp = get_mp_context()  # safer multiprocessing context
 
-    def __get_bulk_oxi_states(self):
-        self._bulk_oxi_states: Structure | Composition | dict | bool = False
-        if bulk_struct_w_oxi := guess_and_set_oxi_states_with_timeout(
-            self.bulk_vr.final_structure, break_early_if_expensive=True
-        ):
-            self.bulk_vr.final_structure = self._bulk_oxi_states = bulk_struct_w_oxi
+        # Decide number of processes
+        if self.processes is None:
+            self.processes = min(max(1, mp.cpu_count() - 1), len(self.defect_folders) - 1)
+
+        # Serial processing
+        if self.processes <= 1:
+            with tqdm(self.defect_folders, desc="Parsing defect calculations") as pbar:
+
+                for defect_folder in pbar:
+                    pbar.set_description(f"Parsing {defect_folder}/{self.subfolder}".replace("/.", ""))
+
+                    parsed_defect_entry, warnings_string, _folder = self._parse_defect_and_handle_warnings(defect_folder)
+                    parsing_warnings.append(
+                        self._parse_parsing_warnings(warnings_string, defect_folder, f"{defect_folder}/{self.subfolder}")
+                    )
+                    if parsed_defect_entry is not None:
+                        parsed_defect_entries.append(parsed_defect_entry)
+        # Multiprocessing
+        else:
+            charged_defect_folder = None
+            for folder in self.defect_folders:
+                with contextlib.suppress(Exception):
+                    if abs(int(folder[-1])) > 0: #last value of folder contains defect charge.
+                        charged_defect_folder = folder
+                        break
+            
+            pbar = tqdm(total=len(self.defect_folders))
+
+            try:
+                #----Set up preliminary work on charged_defect_folder----
+                if charged_defect_folder is not None:                    
+                    pbar.set_description(f"Parsing {charged_defect_folder}/{self.subfolder}".replace("/.", ""))
+
+                    parsed_defect_entry, warnings_string, _folder = self._parse_defect_and_handle_warnings(charged_defect_folder) #parse entry
+                    parsing_warnings.append(
+                        self._update_pbar_and_return_warnings_from_parsing(parsed_defect_entry, warnings_string, charged_defect_folder, pbar)
+                    )
+                    if parsed_defect_entry is not None:
+                        parsed_defect_entries.append(parsed_defect_entry)
+
+                #----Get bulk potentials for fnv and efnv corrections---
+                for k, v in self.bulk_corrections_data.items():
+                    if v is None:
+                        with contextlib.suppress(Exception):
+                            if k == "bulk_locpot_dict":
+                                self.bulk_corrections_data[k] = RunParser('espresso')._get_bulk_locpot_dict(self.bulk_path, quiet=True)
+                            elif k == "bulk_site_potentials":
+                                bulk_cube_path, _ = _get_output_files_warn_if_multiple("cube", self.bulk_path)
+                                self.bulk_corrections_data[k] = RunParser(self.code)._get_core_site_potentials(cube_file = bulk_cube_path)
+
+                # Parallel processing of remaining folders
+                folders_to_process = [f for f in self.defect_folders if f != charged_defect_folder]
+                pbar.set_description("Setting up multiprocessing")
+
+                # if self.processes > 1:
+                with pool_manager(self.processes) as pool:
+                    results = pool.imap_unordered(self._parse_defect_and_handle_warnings, folders_to_process)
+                    for result in results:
+                        parsing_warnings.append(
+                            self._update_pbar_and_return_warnings_from_parsing(
+                                defect_entry=result[0],
+                                warnings_string=result[1],
+                                defect_folder=result[2],
+                                pbar=pbar,
+                            )
+                        )
+                        if result[0] is not None:
+                            parsed_defect_entries.append(result[0])
+
+            except Exception as exc:
+                pbar.close()
+                raise exc
+
+            finally:
+                pbar.close()
+
+        return parsed_defect_entries, parsing_warnings
 
     def _parse_defect_and_handle_warnings(self, defect_folder: str) -> tuple:
         """
