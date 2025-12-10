@@ -2990,7 +2990,7 @@ class CompetingPhasesAnalyzer(MSONable):
                 for entry in self.extrinsic_entries:
                     formation_energy = self.phase_diagram.get_form_energy(entry)
                     
-                    mui_ni = sum(
+                    mui_ni = np.sum(
                             [
                                 chempot_series[elt.symbol] * entry.composition[elt]
                                 for elt in self.composition.elements
