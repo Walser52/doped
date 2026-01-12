@@ -3962,18 +3962,24 @@ class DefectParserEspresso:
                 parse_procar=False,
             )
         def _get_vr_dict_without_proj_eigenvalues(vr):
+            def cut_attributes(obj, attributes_to_cut):
+                """
+                Set attributes_to_cut (list) in obj to None and return original values if present
+                """
+                orig_values = {}
+                # Ensure attributes exist and save originals
+                for attr in attributes_to_cut:
+                    if hasattr(obj, attr):
+                        orig_values[attr] = getattr(obj, attr)
+                    else:
+                        orig_values[attr] = "__MISSING__"
+                        setattr(obj, attr, None)
+
+                    setattr(obj, attr, None)
+                return obj, orig_values
+
             attributes_to_cut = ["projected_eigenvalues", "projected_magnetization"]
-            orig_values = {}
-            # Ensure attributes exist and save originals
-            for attr in attributes_to_cut:
-                if hasattr(vr, attr):
-                    orig_values[attr] = getattr(vr, attr)
-                else:
-                    orig_values[attr] = "__MISSING__"
-                    setattr(vr, attr, None)
-
-                setattr(vr, attr, None)
-
+            vr, orig_values = cut_attributes(vr, attributes_to_cut)
 
             vr_dict = vr.as_dict()  # only call once
             vr_dict_wout_proj = {  # projected eigenvalue data might be present, but not needed (v slow
@@ -5243,7 +5249,6 @@ class DefectsParserEspresso(DefectsParserVasp):
                         for parsed_defect_entry, processed_warnings_string in pool.imap_unordered(
                             self._parse_defect_and_handle_warnings, self.defect_folders
                         ):
-                            print("PDE", parsed_defect_entry)
                             pbar.update()
                             if parsed_defect_entry is not None:
                                 defect_folder = _get_defect_folder(parsed_defect_entry, self.subfolder)
@@ -5385,43 +5390,6 @@ class DefectsParserEspresso(DefectsParserVasp):
             pbar.update()
 
         return parsed_defect_entry, processed_warnings_string
-
-    # def _parse_defect_and_handle_warnings(self, defect_folder: str) -> tuple:
-    #     """
-    #     Process defect and catch warnings along the way, so we can print which
-    #     warnings came from which defect together at the end, in a summarised
-    #     output.
-
-    #     Args:
-    #         defect_folder (str): The defect folder to parse.
-
-    #     Returns:
-    #         tuple: (parsed_defect_entry, warnings_string, defect_folder)
-    #     """
-    #     with warnings.catch_warnings(record=True) as captured_warnings:
-    #         parsed_defect_entry = self._parse_single_defect(defect_folder)
-    #     print("DEFECT FOLDER:2", parsed_defect_entry)
-
-    #     ignore_messages = [
-    #         "Estimated error",
-    #         "There are mismatching",
-    #         "The KPOINTS",
-    #         "The POTCAR",
-    #     ]  # collectively warned later
-
-    #     def _check_ignored_message_in_warning(warning_message):
-    #         if hasattr(warning_message, "args"):
-    #             return any(warning_message.args[0].startswith(i) for i in ignore_messages)
-    #         return any(warning_message.startswith(i) for i in ignore_messages)
-
-    #     warnings_string = "\n\n".join(
-    #         str(warning.message)
-    #         for warning in captured_warnings
-    #         if not _check_ignored_message_in_warning(warning.message)
-    #     )
-
-    #     # return parsed_defect_entry, warnings_string, defect_folder
-    #     return parsed_defect_entry, warnings_string
 
     def _parse_single_defect(self, defect_folder):
         try:
